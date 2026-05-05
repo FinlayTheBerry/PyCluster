@@ -1,0 +1,10 @@
+{
+    "port": 12345,
+    "hostnames": [ "host1.example.com", "host2.example.com", "host3.example.com", "host4.example.com" ],
+    "interval": 30,
+    "service_check_command": "systemctl --user is-active --quiet MyService.service",
+    "service_start_command": "systemctl --user start MyService.service",
+    "service_stop_command": "systemctl --user stop MyService.service",
+    "start_node_command": "ssh -o StrictHostKeyChecking='no' -o UserKnownHostsFile='/dev/null' -i '/home/MyUser/.ssh/ssh_private_key' '{HOST_IP}' screen -S PyCluster -d -m '/home/MyUser/PyCluster/PyCluster.py' run",
+    "ping_host_command": "ping -c 1 -W 2 '{HOST_IP}'"
+}
