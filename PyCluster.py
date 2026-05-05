@@ -114,8 +114,7 @@ START_TIME = IO_GetEpoch()
 MY_HOSTNAME = socket.gethostname()
 MY_HOST = { "name": MY_HOSTNAME, "ip": socket.gethostbyname(MY_HOSTNAME) }
 
-PREPARE_SHUTDOWN = False
-SHUTDOWN_REQUESTED = False
+NO_RESTART = False
 # endregion
 
 # region PyCluster Helpers
@@ -147,32 +146,32 @@ async def HandleRequest(reader, writer):
         response = InvokeRequest(request)
         writer.write((response + os.linesep).encode())
         await writer.drain()
+        if response == "BYE":
+            sys.exit(0)
     finally:
         writer.close()
         await writer.wait_closed()
 
 def InvokeRequest(request):
-    global SHUTDOWN_REQUESTED
-    global PREPARE_SHUTDOWN
+    global NO_RESTART
     if request == "status":
         service_up = CheckService()
-        return IO_SerializeJson({ "reachable": True, "node_up": True, "service_up": service_up, "birth": START_TIME, "shutdown_requested": SHUTDOWN_REQUESTED, "prepare_shutdown": PREPARE_SHUTDOWN }, compact=True)
-    elif request == "prepare_shutdown":
-        PREPARE_SHUTDOWN = True
+        return IO_SerializeJson({ "reachable": True, "node_up": True, "service_up": service_up, "birth": START_TIME, "no_restart": NO_RESTART }, compact=True)
+    elif request == "no_restart":
+        NO_RESTART = True
         return ""
-    elif request == "shutdown":
-        SHUTDOWN_REQUESTED = True
-        return ""
+    elif request == "stop":
+        return "BYE"
     else:
         raise Exception(f"Invalid request {request}.")
 async def GetHostStatus(host):
     ping_host_command = ENV['ping_host_command'].replace("{HOST_IP}", host['ip'])
     if RunCommand(ping_host_command, check=False) != 0:
-        return { "reachable": False, "node_up": False, "service_up": False, "birth": float("inf"), "shutdown_requested": False, "prepare_shutdown": False }
+        return { "reachable": False, "node_up": False, "service_up": False, "birth": float("inf"), "no_restart": False }
     try:
         return IO_DeserializeJson(await SendRequest(host, "status"))
     except:
-        return { "reachable": True, "node_up": False, "service_up": False, "birth": float("inf"), "shutdown_requested": False, "prepare_shutdown": False }
+        return { "reachable": True, "node_up": False, "service_up": False, "birth": float("inf"), "no_restart": False }
 
 async def Heartbeat():
     restart_needed = []
@@ -192,7 +191,7 @@ async def Heartbeat():
         if not service_up:
             LOG_Info(f"{MY_HOST['name']} is eldest but service is down. Starting...")
             StartService()
-        if not SHUTDOWN_REQUESTED and IO_GetEpoch() - START_TIME > 10:
+        if not NO_RESTART and IO_GetEpoch() - min(START_TIME, min_birth) > 10:
             for host in restart_needed:
                 LOG_Info(f"{MY_HOST['name']} is eldest restarting {host['name']}...")
                 StartNode(host)
@@ -207,7 +206,7 @@ async def Run():
     server = await asyncio.start_server(HandleRequest, "0.0.0.0", ENV['port'])
     try:
         LOG_Info(f"{MY_HOST['name']} joined cluster.")
-        while not SHUTDOWN_REQUESTED:
+        while True:
             try:
                 await Heartbeat()
                 await asyncio.sleep(ENV['interval'])
@@ -233,16 +232,16 @@ async def Start():
             await asyncio.sleep(0.25)
     print("Started all hosts.")
 async def Stop():
-    print("Preparing cluster nodes for shutdown...")
+    print("Disabling restart...")
     for host in ENV['hosts']:
         try:
-            await SendRequest(host, "prepare_shutdown")
+            await SendRequest(host, "no_restart")
         except:
             pass
-    print("Shutting down cluster nodes...")
+    print("Stopping cluster nodes...")
     for host in ENV['hosts']:
         try:
-            await SendRequest(host, "shutdown")
+            await SendRequest(host, "stop")
         except:
             pass
     print("Cluster has been stopped.")
@@ -262,7 +261,7 @@ async def Status():
             print(YELLOW, end="")
         else:
             print(RED, end="")
-        print(f"Hostname {host['name']} - Reachable {status['reachable']} - Node Up {status['node_up']} - Service Up {status['service_up']} - Birth {IO_FormatEpoch(status['birth'])} - Shutdown Requested {status['shutdown_requested']} - Prepare Shutdown {status['prepare_shutdown']}", end="")
+        print(f"Hostname {host['name']} - Reachable {status['reachable']} - Node Up {status['node_up']} - Service Up {status['service_up']} - Birth {IO_FormatEpoch(status['birth'])} - No Restart {status['no_restart']}", end="")
         print(RESET)
 # endregion
 
