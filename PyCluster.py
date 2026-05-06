@@ -8,6 +8,7 @@ import sys
 import asyncio
 import socket
 import subprocess
+import math
 
 # region File IO
 def IO_RealPath(filePath):
@@ -246,6 +247,7 @@ async def Stop():
             pass
     print("Cluster has been stopped.")
 async def Status():
+    # { "reachable": True, "node_up": False, "service_up": False, "birth": float("inf"), "no_restart": False }
     BLUE = "\033[1;34m"
     GREEN = "\033[1;32m"
     YELLOW = "\033[1;33m"
@@ -253,11 +255,11 @@ async def Status():
     RESET = "\033[0m"
     for host in ENV['hosts']:
         status = await GetHostStatus(host)
-        if status["service_up"]:
+        if status['reachable'] and status['node_up'] and status['service_up'] and math.isfinite(status['birth']) and status['birth'] > 0 and not status['no_restart']:
             print(BLUE, end="")
-        elif status["node_up"]:
+        elif status['reachable'] and status['node_up'] and not status['service_up'] and math.isfinite(status['birth']) and status['birth'] > 0 and not status['no_restart']:
             print(GREEN, end="")
-        elif not status["reachable"]:
+        elif not status['reachable'] and not status['node_up'] and not status['service_up'] and status['birth'] == float("inf") and not status['no_restart']:
             print(YELLOW, end="")
         else:
             print(RED, end="")
